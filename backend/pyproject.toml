@@ -1,0 +1,6 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "合同审查系统后端 FastAPI"
+requires-python = ">=3.11"
+dependencies = []

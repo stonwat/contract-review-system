@@ -1,0 +1,39 @@
+# Web 框架
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+
+# ORM 与数据库
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.31.0
+alembic==1.14.0
+
+# Pydantic
+pydantic==2.10.4
+pydantic-settings==2.7.0
+
+# 认证
+bcrypt==4.2.1
+pyjwt==2.10.1
+
+# 文件存储
+minio==7.2.13
+
+# 任务队列
+redis==5.2.1
+arq==0.26.3
+
+# LLM 客户端
+httpx==0.28.1
+
+# 报表导出
+openpyxl==3.1.5
+
+# 配置
+python-dotenv==1.0.1
+
+# 代码质量（开发依赖）
+ruff==0.8.4
+mypy==1.14.0
+pytest==8.3.4
+pytest-asyncio==0.25.0

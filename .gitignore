@@ -1,0 +1,41 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ===== Node =====
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+
+# ===== 环境与机密 =====
+.env
+.env.local
+.env.*.local
+
+# ===== 编辑器与系统 =====
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ===== 构建产物 =====
+*.log
+backend/app/db/migrations/__pycache__/
+
+# ===== 数据卷 =====
+pgdata/
+miniodata/
+redisdata/

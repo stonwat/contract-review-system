@@ -1,0 +1,60 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: crs-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: contract_review
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-apppassword}
+
+  minio:
+    image: minio/minio:latest
+    container_name: crs-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+
+  redis:
+    image: redis:7-alpine
+    container_name: crs-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+  backend:
+    build: ./backend
+    container_name: crs-backend
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - minio
+      - redis
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://app:${DB_PASSWORD:-apppassword}@postgres:5432/contract_review
+      MINIO_ENDPOINT: minio:9000
+      REDIS_URL: redis://redis:6379/0
+
+volumes:
+  pgdata:
+  miniodata:
+  redisdata:

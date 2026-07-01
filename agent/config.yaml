@@ -1,0 +1,27 @@
+# 本地 Agent 配置
+
+# 服务端 API
+server:
+  base_url: http://localhost:8000/api/v1
+  api_key: change-me-to-a-random-agent-api-key   # 与后端 AGENT_API_KEY 一致
+
+# OCR 配置
+ocr:
+  engine: paddleocr       # paddleocr / tesseract
+  lang: ch                # 中英文混合
+
+# LLM 配置（提取合同字段）
+llm:
+  base_url: https://api.example.com/v1
+  api_key: your-llm-api-key
+  model: qwen2.5-72b
+
+# 文件命名信号（前后项判定辅助）
+signals:
+  front: ["前项", "上家", "前"]
+  back: ["后项", "下家", "后"]
+
+# 输出与日志
+log:
+  level: INFO
+  file: ./agent.log
