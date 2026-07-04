@@ -1,18 +1,5 @@
 /** 合同相关类型 */
 
-export interface LineItem {
-  id: string
-  contract_id: string
-  item_no?: number
-  item_name?: string
-  spec?: string
-  unit?: string
-  quantity?: number
-  unit_price?: number
-  amount?: number
-  remark?: string
-}
-
 export interface Contract {
   id: string
   contract_no: string
@@ -42,9 +29,21 @@ export interface ContractDetail extends Contract {
   ip_terms?: string
   other_key_terms?: string
   source_file_name?: string
-  source_file_hash?: string
-  ocr_engine?: string
-  llm_model?: string
   extracted_at?: string
-  line_items: LineItem[]
+}
+
+/** 项目卡片数据：前后项并排展示 */
+export interface ProjectCard {
+  contract_no: string
+  project_name?: string
+  city?: string
+  has_front_contract: boolean
+  has_back_contract: boolean
+  has_front_acceptance: boolean
+  has_back_acceptance: boolean
+  llm_analyzed: boolean
+  project_risk?: string
+  audit_status?: string
+  front_contract: Contract | null
+  back_contract: Contract | null
 }

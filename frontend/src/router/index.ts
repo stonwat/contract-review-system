@@ -13,13 +13,11 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/components/AppLayout.vue'),
     redirect: '/dashboard',
     children: [
-      { path: 'dashboard', name: 'Dashboard', component: () => import('@/views/dashboard/DashboardView.vue') },
-      { path: 'contracts', name: 'ContractList', component: () => import('@/views/contracts/ContractList.vue') },
-      { path: 'contracts/:id', name: 'ContractDetail', component: () => import('@/views/contracts/ContractDetail.vue') },
-      { path: 'comparisons', name: 'ComparisonReview', component: () => import('@/views/comparisons/ComparisonReview.vue') },
-      { path: 'acceptance', name: 'AcceptanceManage', component: () => import('@/views/acceptance/AcceptanceManage.vue') },
-      { path: 'risks', name: 'RiskDashboard', component: () => import('@/views/risks/RiskDashboard.vue') },
-      { path: 'reports', name: 'ReportCenter', component: () => import('@/views/reports/ReportCenter.vue') },
+      { path: 'dashboard', name: 'Dashboard', component: () => import('@/views/dashboard/DashboardView.vue'), meta: { title: '仪表盘', roles: ['super_admin', 'city_admin', 'viewer'] } },
+      { path: 'projects', name: 'ProjectList', component: () => import('@/views/projects/ProjectList.vue'), meta: { title: '项目管理', roles: ['super_admin', 'city_admin', 'viewer'] } },
+      { path: 'projects/:contractNo', name: 'ProjectDetail', component: () => import('@/views/projects/ProjectDetail.vue'), meta: { title: '项目详情', roles: ['super_admin', 'city_admin', 'viewer'] } },
+      { path: 'reports', name: 'ReportCenter', component: () => import('@/views/reports/ReportCenter.vue'), meta: { title: '报表中心', roles: ['super_admin', 'city_admin', 'viewer'] } },
+      { path: 'admins', name: 'AdminManage', component: () => import('@/views/admins/AdminManage.vue'), meta: { title: '账号管理', roles: ['super_admin'] } },
     ],
   },
 ]
@@ -31,11 +29,21 @@ const router = createRouter({
 
 router.beforeEach((to, _from, next) => {
   const authStore = useAuthStore()
+
+  // 未登录 → 跳转登录页
   if (!to.meta.public && !authStore.isLoggedIn) {
     next('/login')
-  } else {
-    next()
+    return
   }
+
+  // 角色权限检查
+  const requiredRoles = to.meta.roles as string[] | undefined
+  if (requiredRoles && !requiredRoles.includes(authStore.role)) {
+    next('/dashboard')
+    return
+  }
+
+  next()
 })
 
 export default router

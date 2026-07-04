@@ -9,6 +9,10 @@ class DashboardOverview(BaseModel):
     pending_verify_count: int
     high_risk_count: int
     completed_count: int
+    llm_analyzed_count: int = 0
+    front_count: int = 0
+    back_count: int = 0
+    ready_count: int = 0
 
 
 class CityStat(BaseModel):

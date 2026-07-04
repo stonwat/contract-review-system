@@ -33,7 +33,7 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)) -> dict:
             detail="用户名或密码错误",
         )
 
-    token = create_access_token(str(admin.id))
+    token = create_access_token(admin)
     return success(
         {
             "access_token": token,

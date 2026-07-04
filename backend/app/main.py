@@ -12,10 +12,14 @@ from app.core.exceptions import register_exception_handlers
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期：启动与关闭。"""
-    # 启动时可做初始化（如 MinIO bucket 检查）
+    """应用生命周期：启动时自动建表，关闭时清理资源。"""
+    from app.models import Base
+    from app.db.database import engine
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
     yield
-    # 关闭时清理资源
 
 
 app = FastAPI(

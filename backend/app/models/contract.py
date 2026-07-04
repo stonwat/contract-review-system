@@ -1,10 +1,19 @@
 """合同表。"""
 
 from datetime import date, datetime
-from uuid import UUID
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Numeric, String, Text
-from sqlalchemy.dialects.postgresql import UUID as PgUUID
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
@@ -45,12 +54,7 @@ class Contract(Base, UUIDPrimaryKey, TimestampMixin):
     other_key_terms: Mapped[str | None] = mapped_column(Text)
 
     # 文件溯源
-    source_file_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True))
     source_file_name: Mapped[str | None] = mapped_column(String(300))
-    source_file_hash: Mapped[str | None] = mapped_column(String(64))
-    ocr_raw_text: Mapped[str | None] = mapped_column(Text)
-    ocr_engine: Mapped[str | None] = mapped_column(String(20))
-    llm_model: Mapped[str | None] = mapped_column(String(50))
 
     # 状态
     verified: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -64,5 +68,11 @@ class Contract(Base, UUIDPrimaryKey, TimestampMixin):
 
     __table_args__ = (
         Index("idx_contracts_no", "contract_no"),
-        Index("idx_contracts_type", "contract_no", "contract_type"),
+        UniqueConstraint(
+            "contract_no", "contract_type", name="uq_contracts_no_type"
+        ),
+        CheckConstraint(
+            "contract_type IN ('前项', '后项')", name="ck_contracts_type"
+        ),
     )
+

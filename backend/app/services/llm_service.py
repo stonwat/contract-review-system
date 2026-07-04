@@ -1,5 +1,8 @@
 """LLM 调用封装。统一接口，通过环境变量配置模型。"""
 
+import json
+import re
+
 import httpx
 
 from app.config import settings
@@ -34,20 +37,25 @@ class LLMService:
         except httpx.HTTPError as e:
             raise BusinessError(code=5001, message=f"LLM 调用失败: {e}") from e
 
-    async def compare_terms(
-        self, term_type: str, front_terms: str, back_terms: str
-    ) -> dict:
-        """比对两份合同的某类条款。返回 {"match": "一致/不一致", "diff_detail": "..."}。"""
-        prompt = (
-            f"你是合同审查专家。请比对以下两份合同的{term_type}条款，判断是否实质一致。\n"
-            f"若不一致，具体描述差异。\n\n"
-            f"前项合同{term_type}条款：\n{front_terms}\n\n"
-            f"后项合同{term_type}条款：\n{back_terms}\n\n"
-            f'输出JSON：{{ "match": "一致/不一致", "diff_detail": "具体差异描述" }}'
-        )
-        text = await self.chat(prompt)
-        # 实际项目应做 JSON 解析与容错，此处骨架返回原文
-        return {"raw": text}
+    @staticmethod
+    def _parse_json_response(text: str) -> dict:
+        """从 LLM 响应中解析 JSON，兼容 markdown 代码块包裹。"""
+        # 尝试提取 ```json ... ``` 块
+        m = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
+        json_str = m.group(1) if m else text
+
+        # 去除首尾非 JSON 字符
+        json_str = json_str.strip()
+        start = json_str.find("{")
+        end = json_str.rfind("}")
+        if start >= 0 and end > start:
+            json_str = json_str[start : end + 1]
+
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            # 解析失败，返回原始文本
+            return {"raw_text": text}
 
 
 llm_service = LLMService()

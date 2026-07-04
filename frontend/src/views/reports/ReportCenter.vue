@@ -1,64 +1,267 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { ElTabs, ElTabPane, ElCard, ElTable, ElTableColumn, ElButton, ElMessage } from 'element-plus'
-import { fetchReport, exportReport } from '@/api/reports'
-import { exportToExcel } from '@/utils/export'
+import { ref, computed } from 'vue'
+import { ElTabs, ElTabPane, ElCard, ElTable, ElTableColumn, ElButton, ElTag, ElEmpty } from 'element-plus'
+import SvgIcon from '@/components/SvgIcon.vue'
+import { fetchReport } from '@/api/reports'
+import { formatAmount, formatPercent } from '@/utils/format'
 
 const activeTab = ref('contract-consistency')
+const rawData = ref<Record<string, unknown> | null>(null)
 const data = ref<Record<string, unknown>[]>([])
+const loading = ref(false)
 
 const tabs = [
-  { name: 'contract-consistency', label: '合同内容一致性' },
-  { name: 'acceptance-consistency', label: '验收报告一致性' },
+  { name: 'contract-consistency', label: '合同一致性' },
+  { name: 'acceptance-consistency', label: '验收一致性' },
   { name: 'low-margin', label: '低毛利项目' },
   { name: 'high-risk', label: '高风险项目' },
 ]
 
+// 汇总指标条：从返回数据中提取 summary
+const summaryItems = computed<{ label: string; value: string | number; tone?: string }[]>(() => {
+  const r = rawData.value
+  if (!r) return []
+  if (activeTab.value === 'low-margin') {
+    const s = r.summary as { total?: number; low_margin?: number; inverted?: number } | undefined
+    return [
+      { label: '低毛利项目总数', value: s?.total ?? 0, tone: 'warning' },
+      { label: '低毛利', value: s?.low_margin ?? 0, tone: 'warning' },
+      { label: '利润倒挂', value: s?.inverted ?? 0, tone: 'danger' },
+    ]
+  }
+  if (activeTab.value === 'high-risk') {
+    return [{ label: '高风险项目数', value: r.total as number ?? 0, tone: 'danger' }]
+  }
+  // 一致性报表
+  const s = (r.summary as { city?: string; total?: number; '完全一致'?: number; '有一致性风险'?: number; '完全不一致'?: number }[]) || []
+  const total = s.reduce((a, b) => a + (b.total || 0), 0)
+  const ok = s.reduce((a, b) => a + (b['完全一致'] || 0), 0)
+  const risk = s.reduce((a, b) => a + (b['有一致性风险'] || 0), 0)
+  const diff = s.reduce((a, b) => a + (b['完全不一致'] || 0), 0)
+  return [
+    { label: '项目数', value: total },
+    { label: '完全一致', value: ok, tone: 'success' },
+    { label: '一致性风险', value: risk, tone: 'warning' },
+    { label: '完全不一致', value: diff, tone: 'danger' },
+  ]
+})
+
 async function loadTab(name: string): Promise<void> {
-  const result = (await fetchReport(name)) as { details?: Record<string, unknown>[] }
-  data.value = result?.details ?? []
+  loading.value = true
+  try {
+    const result = (await fetchReport(name)) as { details?: Record<string, unknown>[]; items?: Record<string, unknown>[]; summary?: unknown; total?: number }
+    rawData.value = result as Record<string, unknown>
+    data.value = result?.details ?? result?.items ?? []
+  } finally {
+    loading.value = false
+  }
 }
 
 async function handleExport(): Promise<void> {
-  if (data.value.length === 0) {
-    ElMessage.warning('暂无数据可导出')
-    return
-  }
-  exportToExcel(data.value, activeTab.value)
+  window.open(`${import.meta.env.VITE_API_BASE || '/api/v1'}/reports/export?report_type=${activeTab.value}`, '_blank')
 }
 
-function handleTabChange(name: string): void {
-  loadTab(name)
+function handleTabChange(name: string | number): void {
+  loadTab(String(name))
+}
+
+function getRateLevelTagType(level?: string): 'success' | 'warning' | 'danger' {
+  if (level === '利润倒挂') return 'danger'
+  if (level === '低毛利') return 'warning'
+  return 'success'
 }
 
 loadTab(activeTab.value)
 </script>
 
 <template>
-  <ElCard shadow="never">
-    <template #header>
-      <div class="header">
-        <span>报表中心</span>
-        <ElButton type="primary" @click="handleExport">导出 Excel</ElButton>
+  <div class="report-center page-container">
+    <!-- 页面标题 -->
+    <div class="page-header">
+      <h1 class="page-title">报表中心</h1>
+      <ElButton type="primary" @click="handleExport">
+        <SvgIcon name="export" :size="16" color="inherit" style="margin-right: 4px" />
+        导出 Excel
+      </ElButton>
+    </div>
+
+    <!-- 报表卡片 -->
+    <ElCard shadow="never" class="report-card">
+      <ElTabs v-model="activeTab" @tab-change="handleTabChange" class="report-tabs">
+        <ElTabPane v-for="t in tabs" :key="t.name" :label="t.label" :name="t.name" />
+      </ElTabs>
+
+      <!-- 汇总指标条 -->
+      <div v-if="summaryItems.length" class="summary-bar">
+        <div
+          v-for="item in summaryItems"
+          :key="item.label"
+          class="summary-item"
+          :class="item.tone ? `tone-${item.tone}` : ''"
+        >
+          <span class="sum-value nums">{{ item.value }}</span>
+          <span class="sum-label">{{ item.label }}</span>
+        </div>
       </div>
-    </template>
-    <ElTabs v-model="activeTab" @tab-change="handleTabChange">
-      <ElTabPane v-for="t in tabs" :key="t.name" :label="t.label" :name="t.name" />
-    </ElTabs>
-    <ElTable :data="data" border>
-      <ElTableColumn prop="contract_no" label="合同编号" />
-      <ElTableColumn prop="city" label="地市" />
-      <ElTableColumn prop="margin_rate" label="毛利率" />
-      <ElTableColumn prop="front_amount" label="前项金额" />
-      <ElTableColumn prop="back_amount" label="后项金额" />
-    </ElTable>
-  </ElCard>
+
+      <ElTable :data="data" border v-loading="loading" stripe class="report-table">
+        <!-- 合同一致性报表 -->
+        <template v-if="activeTab === 'contract-consistency'">
+          <ElTableColumn prop="contract_no" label="合同编号" min-width="160" />
+          <ElTableColumn prop="city" label="地市" min-width="100" />
+          <ElTableColumn prop="project_name" label="项目名称" min-width="160" />
+          <ElTableColumn label="前项金额" min-width="120" align="right">
+            <template #default="{ row }">{{ formatAmount(row.front_amount as number) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="后项金额" min-width="120" align="right">
+            <template #default="{ row }">{{ formatAmount(row.back_amount as number) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="毛利率" min-width="100" align="right">
+            <template #default="{ row }">{{ formatPercent(row.rate as number) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="等级" min-width="100" align="center">
+            <template #default="{ row }">
+              <ElTag v-if="row.rate_level" :type="getRateLevelTagType(row.rate_level as string)" size="small" effect="dark">{{ row.rate_level }}</ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="一致性" min-width="120" align="center">
+            <template #default="{ row }">
+              <ElTag
+                v-if="row.similarity"
+                :type="row.similarity === '完全一致' ? 'success' : row.similarity === '有一致性风险' ? 'warning' : 'danger'"
+                size="small"
+                effect="dark"
+              >{{ row.similarity }}</ElTag>
+            </template>
+          </ElTableColumn>
+        </template>
+
+        <!-- 验收一致性报表 -->
+        <template v-else-if="activeTab === 'acceptance-consistency'">
+          <ElTableColumn prop="contract_no" label="合同编号" min-width="160" />
+          <ElTableColumn prop="city" label="地市" min-width="100" />
+          <ElTableColumn prop="project_name" label="项目名称" min-width="160" />
+          <ElTableColumn label="一致性" min-width="120" align="center">
+            <template #default="{ row }">
+              <ElTag
+                v-if="row.similarity"
+                :type="row.similarity === '完全一致' ? 'success' : row.similarity === '有一致性风险' ? 'warning' : 'danger'"
+                size="small"
+                effect="dark"
+              >{{ row.similarity }}</ElTag>
+            </template>
+          </ElTableColumn>
+        </template>
+
+        <!-- 低毛利报表 -->
+        <template v-else-if="activeTab === 'low-margin'">
+          <ElTableColumn prop="contract_no" label="合同编号" min-width="160" />
+          <ElTableColumn prop="city" label="地市" min-width="100" />
+          <ElTableColumn prop="project_name" label="项目名称" min-width="160" />
+          <ElTableColumn label="前项金额" min-width="120" align="right">
+            <template #default="{ row }">{{ formatAmount(row.front_amount as number) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="后项金额" min-width="120" align="right">
+            <template #default="{ row }">{{ formatAmount(row.back_amount as number) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="毛利率" min-width="100" align="right">
+            <template #default="{ row }">{{ formatPercent(row.rate as number) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="等级" min-width="100" align="center">
+            <template #default="{ row }">
+              <ElTag v-if="row.rate_level" :type="getRateLevelTagType(row.rate_level as string)" size="small" effect="dark">{{ row.rate_level }}</ElTag>
+            </template>
+          </ElTableColumn>
+        </template>
+
+        <!-- 高风险报表 -->
+        <template v-else>
+          <ElTableColumn prop="contract_no" label="合同编号" min-width="160" />
+          <ElTableColumn prop="city" label="地市" min-width="100" />
+          <ElTableColumn prop="project_name" label="项目名称" min-width="160" />
+          <ElTableColumn label="前项金额" min-width="120" align="right">
+            <template #default="{ row }">{{ formatAmount(row.front_amount as number) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="后项金额" min-width="120" align="right">
+            <template #default="{ row }">{{ formatAmount(row.back_amount as number) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="毛利率" min-width="100" align="right">
+            <template #default="{ row }">{{ formatPercent(row.rate as number) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="等级" min-width="100" align="center">
+            <template #default="{ row }">
+              <ElTag v-if="row.rate_level" :type="getRateLevelTagType(row.rate_level as string)" size="small" effect="dark">{{ row.rate_level }}</ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="合同一致性" min-width="120" align="center">
+            <template #default="{ row }">{{ row.contract_similarity || '—' }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="验收一致性" min-width="120" align="center">
+            <template #default="{ row }">{{ row.acceptance_similarity || '—' }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="项目风险" min-width="100" align="center">
+            <template #default="{ row }">
+              <ElTag v-if="row.project_risk" type="danger" size="small" effect="dark">{{ row.project_risk }}</ElTag>
+            </template>
+          </ElTableColumn>
+        </template>
+      </ElTable>
+
+      <ElEmpty v-if="!loading && data.length === 0" description="暂无报表数据" />
+    </ElCard>
+  </div>
 </template>
 
 <style scoped>
-.header {
+.report-center {
+  max-width: 1480px;
+}
+
+.report-card {
+  border-radius: var(--radius-md) !important;
+}
+.report-card :deep(.el-card__body) {
+  padding: 0;
+}
+
+.report-tabs {
+  padding: 0 20px;
+  padding-top: 4px;
+}
+.report-tabs :deep(.el-tabs__header) {
+  margin-bottom: 0;
+}
+
+/* 汇总指标条 */
+.summary-bar {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  gap: 24px;
+  padding: 16px 20px;
+  background: var(--color-paper-2);
+  border-bottom: 1px solid var(--color-border-soft);
+  flex-wrap: wrap;
+}
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 80px;
+}
+.summary-item .sum-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--color-ink);
+  line-height: 1.2;
+}
+.summary-item .sum-label {
+  font-size: 12px;
+  color: var(--color-ink-3);
+}
+.summary-item.tone-success .sum-value { color: var(--color-success); }
+.summary-item.tone-warning .sum-value { color: var(--color-warning); }
+.summary-item.tone-danger .sum-value { color: var(--color-danger); }
+
+.report-table {
+  border-top: none;
 }
 </style>

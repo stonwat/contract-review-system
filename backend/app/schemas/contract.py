@@ -6,24 +6,6 @@ from uuid import UUID
 from pydantic import BaseModel
 
 
-class LineItemCreate(BaseModel):
-    item_no: int | None = None
-    item_name: str | None = None
-    spec: str | None = None
-    unit: str | None = None
-    quantity: float | None = None
-    unit_price: float | None = None
-    amount: float | None = None
-    remark: str | None = None
-
-
-class LineItemOut(LineItemCreate):
-    id: UUID
-    contract_id: UUID
-
-    model_config = {"from_attributes": True}
-
-
 class ContractCreate(BaseModel):
     """Agent 推送合同提取结果。"""
 
@@ -46,11 +28,6 @@ class ContractCreate(BaseModel):
     ip_terms: str | None = None
     other_key_terms: str | None = None
     source_file_name: str | None = None
-    source_file_hash: str | None = None
-    ocr_raw_text: str | None = None
-    ocr_engine: str | None = None
-    llm_model: str | None = None
-    line_items: list[LineItemCreate] = []
 
 
 class ContractUpdate(BaseModel):
@@ -104,12 +81,24 @@ class ContractDetail(ContractListItem):
     ip_terms: str | None = None
     other_key_terms: str | None = None
     source_file_name: str | None = None
-    source_file_hash: str | None = None
-    ocr_engine: str | None = None
-    llm_model: str | None = None
     extracted_at: datetime | None = None
-    line_items: list[LineItemOut] = []
 
 
 class VerifyRequest(BaseModel):
     verified_by: str | None = None
+
+
+class ProjectCardItem(BaseModel):
+    """项目卡片数据：前后项合同并排展示。"""
+    contract_no: str
+    project_name: str | None = None
+    city: str | None = None
+    has_front_contract: bool = False
+    has_back_contract: bool = False
+    has_front_acceptance: bool = False
+    has_back_acceptance: bool = False
+    llm_analyzed: bool = False
+    project_risk: str | None = None
+    audit_status: str | None = None
+    front_contract: ContractListItem | None = None
+    back_contract: ContractListItem | None = None

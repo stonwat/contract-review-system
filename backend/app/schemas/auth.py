@@ -14,6 +14,8 @@ class AdminInfo(BaseModel):
     id: UUID
     username: str
     display_name: str | None = None
+    role: str = "viewer"
+    city: str | None = None
 
     model_config = {"from_attributes": True}
 
