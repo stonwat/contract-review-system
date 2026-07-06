@@ -5,6 +5,7 @@ __pycache__/
 *.so
 .Python
 .venv/
+.venv/
 venv/
 env/
 *.egg-info/
@@ -34,6 +35,9 @@ Thumbs.db
 # ===== 构建产物 =====
 *.log
 backend/app/db/migrations/__pycache__/
+
+# ===== 临时产物 =====
+.temp/
 
 # ===== 数据卷 =====
 pgdata/

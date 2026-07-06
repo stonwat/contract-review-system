@@ -2,7 +2,7 @@
 
 import io
 
-from fastapi import APIRouter, Depends, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from minio import Minio
 
 import hashlib
@@ -47,10 +47,20 @@ async def upload_files(
     for f in files:
         content = await f.read()
         if len(content) > MAX_FILE_SIZE:
+            results.append({
+                "object_key": None,
+                "file_name": f.filename,
+                "error": f"文件超过大小限制（{MAX_FILE_SIZE // 1024 // 1024}MB）",
+            })
             continue
         file_hash = hashlib.sha256(content).hexdigest()
         ext = (f.filename or "").rsplit(".", 1)[-1].lower()
         if ext not in ALLOWED_TYPES:
+            results.append({
+                "object_key": None,
+                "file_name": f.filename,
+                "error": f"不支持的文件类型（.{ext}），允许：{', '.join(ALLOWED_TYPES)}",
+            })
             continue
 
         # 存储到 MinIO：路径为 {hash前2位}/{hash}.{ext}

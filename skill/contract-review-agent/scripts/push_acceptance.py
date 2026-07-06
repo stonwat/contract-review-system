@@ -16,7 +16,6 @@ import sys
 from pathlib import Path
 
 import httpx
-import yaml
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -36,18 +35,6 @@ FIELD_MAP = {
 
 FRONT_SIGNALS = ["前项", "上家"]
 BACK_SIGNALS = ["后项", "下家"]
-
-
-def load_config(config_path: str = "agent/config.yaml") -> dict:
-    """加载配置文件。"""
-    path = Path(config_path)
-    if not path.exists():
-        path = Path("A:/Inbox/contract-review-system/agent/config.yaml")
-    if not path.exists():
-        logger.error("配置文件不存在: %s", config_path)
-        sys.exit(1)
-    with path.open(encoding="utf-8") as f:
-        return yaml.safe_load(f)
 
 
 def map_fields(data: dict) -> dict:
@@ -83,7 +70,7 @@ def file_hash(file_path: Path) -> str:
     return h.hexdigest()
 
 
-def push_acceptance(json_path: Path, config: dict, contract_no: str | None = None) -> dict:
+def push_acceptance(json_path: Path, contract_no: str | None = None) -> dict:
     """推送单个验收报告 JSON 到后端。"""
     with json_path.open(encoding="utf-8") as f:
         data = json.load(f)
@@ -107,15 +94,13 @@ def push_acceptance(json_path: Path, config: dict, contract_no: str | None = Non
     mapped.setdefault("ocr_engine", "pre-extracted")
     mapped.setdefault("llm_model", "unknown")
 
-    base_url = config["server"]["base_url"]
-    api_key = config["server"]["api_key"]
-    with httpx.Client(base_url=base_url, headers={"X-API-Key": api_key}, timeout=60.0) as client:
+    with httpx.Client(base_url="http://localhost:8000/api/v1", timeout=60.0) as client:
         resp = client.post("/acceptance", json=mapped)
         resp.raise_for_status()
         return resp.json()
 
 
-def scan_and_push(dir_path: Path, config: dict) -> list[dict]:
+def scan_and_push(dir_path: Path) -> list[dict]:
     """扫描目录下所有验收报告 JSON 并推送。"""
     results = []
     patterns = ["*验收*解析*.json", "*验收*_解析.json", "*验收报告*.json"]
@@ -127,7 +112,7 @@ def scan_and_push(dir_path: Path, config: dict) -> list[dict]:
 
     for jf in sorted(json_files):
         try:
-            result = push_acceptance(jf, config)
+            result = push_acceptance(jf)
             logger.info("推送成功: %s -> %s", jf.name, result.get("data"))
             results.append({"file": str(jf), "status": "ok", "result": result})
         except Exception as e:
@@ -142,16 +127,13 @@ def main() -> None:
     parser.add_argument("--json", help="单个验收报告 JSON 文件路径")
     parser.add_argument("--dir", help="批量扫描目录")
     parser.add_argument("--contract-no", help="强制指定合同编号")
-    parser.add_argument("--config", default="agent/config.yaml", help="配置文件路径")
     args = parser.parse_args()
 
-    config = load_config(args.config)
-
     if args.json:
-        result = push_acceptance(Path(args.json), config, args.contract_no)
+        result = push_acceptance(Path(args.json), args.contract_no)
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif args.dir:
-        results = scan_and_push(Path(args.dir), config)
+        results = scan_and_push(Path(args.dir))
         ok = sum(1 for r in results if r["status"] == "ok")
         err = sum(1 for r in results if r["status"] == "error")
         print(f"\n完成: 成功 {ok}, 失败 {err}")

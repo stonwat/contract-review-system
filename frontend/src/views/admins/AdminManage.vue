@@ -277,7 +277,7 @@ onMounted(load)
 
 <style scoped>
 .admin-manage {
-  max-width: 1400px;
+  max-width: 100%;
 }
 
 .table-card {
@@ -292,5 +292,15 @@ onMounted(load)
   display: flex;
   justify-content: flex-end;
   border-top: 1px solid var(--color-border-lighter);
+}
+
+/* ── 响应式 ── */
+@media (max-width: 1280px) {
+  .admin-manage { max-width: 100%; }
+}
+@media (max-width: 768px) {
+  .table-card { overflow-x: auto; }
+  .table-card .el-table { min-width: 680px; }
+  .pagination-wrap { justify-content: center; padding: 12px; }
 }
 </style>

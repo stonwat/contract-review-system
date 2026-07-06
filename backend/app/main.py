@@ -12,12 +12,13 @@ from app.core.exceptions import register_exception_handlers
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期：启动时自动建表，关闭时清理资源。"""
-    from app.models import Base
-    from app.db.database import engine
+    """应用生命周期。Dev 环境自动建表，生产环境仅通过 Alembic 迁移。"""
+    if settings.app_env == "dev":
+        from app.models import Base
+        from app.db.database import engine
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
     yield
 

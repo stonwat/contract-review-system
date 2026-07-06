@@ -17,6 +17,7 @@ from app.schemas.acceptance import (
     AcceptanceListItem,
     AcceptanceOut,
     AcceptanceUpdate,
+    VerifyAcceptanceRequest,
 )
 from app.schemas.common import success
 
@@ -159,6 +160,7 @@ async def update_acceptance(
 @router.post("/{report_id}/verify")
 async def verify_acceptance(
     report_id: UUID,
+    body: VerifyAcceptanceRequest,
     db: AsyncSession = Depends(get_db),
     admin: CurrentAdmin = None,
 ) -> dict:
@@ -172,7 +174,7 @@ async def verify_acceptance(
         raise PERMISSION_DENIED
 
     report.verified = True
-    report.verified_by = admin.username
+    report.verified_by = body.verified_by or admin.username
     report.verified_at = datetime.now(timezone.utc)
     await db.commit()
     return success({"id": str(report.id), "verified": True})

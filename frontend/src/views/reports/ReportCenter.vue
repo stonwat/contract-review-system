@@ -1,14 +1,19 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { ElTabs, ElTabPane, ElCard, ElTable, ElTableColumn, ElButton, ElTag, ElEmpty } from 'element-plus'
+import { ref, computed, onMounted } from 'vue'
+import { ElTabs, ElTabPane, ElCard, ElTable, ElTableColumn, ElButton, ElTag, ElEmpty, ElSelect, ElOption } from 'element-plus'
 import SvgIcon from '@/components/SvgIcon.vue'
 import { fetchReport } from '@/api/reports'
+import { fetchCities } from '@/api/cities'
+import { useAuthStore } from '@/stores/auth'
 import { formatAmount, formatPercent } from '@/utils/format'
 
+const authStore = useAuthStore()
 const activeTab = ref('contract-consistency')
 const rawData = ref<Record<string, unknown> | null>(null)
 const data = ref<Record<string, unknown>[]>([])
 const loading = ref(false)
+const selectedCity = ref('')
+const cities = ref<string[]>([])
 
 const tabs = [
   { name: 'contract-consistency', label: '合同一致性' },
@@ -49,7 +54,11 @@ const summaryItems = computed<{ label: string; value: string | number; tone?: st
 async function loadTab(name: string): Promise<void> {
   loading.value = true
   try {
-    const result = (await fetchReport(name)) as { details?: Record<string, unknown>[]; items?: Record<string, unknown>[]; summary?: unknown; total?: number }
+    const params: Record<string, unknown> = {}
+    if (selectedCity.value) {
+      params.city = selectedCity.value
+    }
+    const result = (await fetchReport(name, params)) as { details?: Record<string, unknown>[]; items?: Record<string, unknown>[]; summary?: unknown; total?: number }
     rawData.value = result as Record<string, unknown>
     data.value = result?.details ?? result?.items ?? []
   } finally {
@@ -58,11 +67,17 @@ async function loadTab(name: string): Promise<void> {
 }
 
 async function handleExport(): Promise<void> {
-  window.open(`${import.meta.env.VITE_API_BASE || '/api/v1'}/reports/export?report_type=${activeTab.value}`, '_blank')
+  const params = new URLSearchParams({ report_type: activeTab.value })
+  if (selectedCity.value) params.set('city', selectedCity.value)
+  window.open(`${import.meta.env.VITE_API_BASE || '/api/v1'}/reports/export?${params}`, '_blank')
 }
 
 function handleTabChange(name: string | number): void {
   loadTab(String(name))
+}
+
+function handleCityChange(): void {
+  loadTab(activeTab.value)
 }
 
 function getRateLevelTagType(level?: string): 'success' | 'warning' | 'danger' {
@@ -71,7 +86,10 @@ function getRateLevelTagType(level?: string): 'success' | 'warning' | 'danger' {
   return 'success'
 }
 
-loadTab(activeTab.value)
+onMounted(async () => {
+  cities.value = await fetchCities()
+  loadTab(activeTab.value)
+})
 </script>
 
 <template>
@@ -83,6 +101,14 @@ loadTab(activeTab.value)
         <SvgIcon name="export" :size="16" color="inherit" style="margin-right: 4px" />
         导出 Excel
       </ElButton>
+    </div>
+
+    <!-- 地市筛选 (仅超管可见) -->
+    <div v-if="authStore.isSuperAdmin" class="city-filter-bar">
+      <span class="filter-label">地市</span>
+      <ElSelect v-model="selectedCity" placeholder="全部地市" clearable style="width: 180px" @change="handleCityChange">
+        <ElOption v-for="c in cities" :key="c" :label="c" :value="c" />
+      </ElSelect>
     </div>
 
     <!-- 报表卡片 -->
@@ -214,7 +240,20 @@ loadTab(activeTab.value)
 
 <style scoped>
 .report-center {
-  max-width: 1480px;
+  max-width: 100%;
+}
+
+.city-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 0 2px;
+}
+.city-filter-bar .filter-label {
+  font-size: 14px;
+  color: var(--color-ink-2);
+  white-space: nowrap;
 }
 
 .report-card {
@@ -263,5 +302,23 @@ loadTab(activeTab.value)
 
 .report-table {
   border-top: none;
+}
+
+/* ── 响应式 ── */
+@media (max-width: 1280px) {
+  .report-center { max-width: 100%; }
+}
+@media (min-width: 1920px) {
+  .report-center { max-width: 100%; }
+  .summary-bar { gap: 40px; padding: 20px 28px; }
+  .summary-item .sum-value { font-size: 26px; }
+}
+@media (max-width: 768px) {
+  .summary-bar { gap: 16px; padding: 12px 16px; }
+  .summary-item { min-width: 60px; }
+  .summary-item .sum-value { font-size: 18px; }
+  .report-tabs { padding: 0 12px; }
+  .report-table { overflow-x: auto; }
+  .report-table .el-table { min-width: 680px; }
 }
 </style>

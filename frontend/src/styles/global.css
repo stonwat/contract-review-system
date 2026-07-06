@@ -14,11 +14,13 @@
   --color-primary-hover: #c81e3a;
   --color-primary-active: #8f1530;
   --color-primary-soft: #f5e6e9;
+  --color-primary-light: #e8606d;
   --color-primary-tint: #faf3f5;
   --color-primary-gradient: linear-gradient(135deg, #b41d34 0%, #d63147 100%);
 
   /* ── 金线点缀（国企权威感） ── */
   --color-gold: #c9a04a;
+  --color-gold-light: #dfc07a;
   --color-gold-soft: #f7efdd;
   --color-gold-line: linear-gradient(90deg, transparent, var(--color-gold), transparent);
 
@@ -50,7 +52,7 @@
   --color-sidebar-active: linear-gradient(90deg, rgba(180,29,52,0.92), rgba(180,29,52,0.78));
   --color-sidebar-hover: rgba(255, 255, 255, 0.05);
   --color-sidebar-border: rgba(255, 255, 255, 0.06);
-  --color-sidebar-width: 220px;
+  --color-sidebar-width: 240px;
   --color-sidebar-width-collapsed: 64px;
 
   /* ── 顶栏 ── */
@@ -196,6 +198,27 @@ a:hover { color: var(--color-primary-hover); }
  * 工具类
  * ============================================================ */
 
+/* ── 响应式布局 ── */
+@media (max-width: 768px) {
+  .page-container { padding: 12px !important; }
+  .page-header { flex-direction: column; align-items: flex-start !important; gap: 8px !important; }
+  .filter-bar { flex-direction: column; align-items: stretch !important; }
+  .filter-bar .el-input,
+  .filter-bar .el-select { width: 100% !important; }
+}
+
+/* 小屏隐藏/显示 */
+@media (max-width: 768px) {
+  .hide-mobile { display: none !important; }
+}
+@media (min-width: 769px) {
+  .show-mobile { display: none !important; }
+}
+
+/* 表格水平滚动 */
+.table-scroll-x { overflow-x: auto; }
+.table-scroll-x .el-table { min-width: 680px; }
+
 /* 章节标题：金色竖线 + 文字 */
 .section-title {
   display: inline-flex;
@@ -280,10 +303,38 @@ a:hover { color: var(--color-primary-hover); }
 
 /* 页面容器 */
 .page-container {
-  padding: 20px;
-  max-width: 1480px;
+  padding: 24px;
   margin: 0 auto;
 }
+/* ── 大屏适配 ── */
+@media (min-width: 1920px) {
+  .page-container { padding: 32px 40px; }
+  :root {
+    --color-sidebar-width: 260px;
+  }
+  body { font-size: 15px; }
+  .page-title { font-size: 22px; }
+}
+@media (max-width: 768px) {
+  .page-container { padding: 12px !important; }
+  .page-header { flex-direction: column; align-items: flex-start !important; gap: 8px !important; }
+  .filter-bar { flex-direction: column; align-items: stretch !important; }
+  .filter-bar .el-input,
+  .filter-bar .el-select { width: 100% !important; }
+}
+
+/* 小屏隐藏/显示 */
+@media (max-width: 768px) {
+  .hide-mobile { display: none !important; }
+}
+@media (min-width: 769px) {
+  .show-mobile { display: none !important; }
+}
+
+/* 表格水平滚动 */
+.table-scroll-x { overflow-x: auto; }
+.table-scroll-x .el-table { min-width: 680px; }
+
 .page-header {
   display: flex;
   align-items: center;

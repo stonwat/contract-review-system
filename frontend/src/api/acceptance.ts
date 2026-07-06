@@ -23,6 +23,6 @@ export async function updateAcceptance(id: string, body: Partial<AcceptanceRepor
   return put(`/acceptance/${id}`, body)
 }
 
-export async function verifyAcceptance(id: string): Promise<unknown> {
-  return post(`/acceptance/${id}/verify`)
+export async function verifyAcceptance(id: string, verifiedBy?: string): Promise<unknown> {
+  return post(`/acceptance/${id}/verify`, { verified_by: verifiedBy })
 }

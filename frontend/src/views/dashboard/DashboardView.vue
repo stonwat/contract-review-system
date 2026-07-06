@@ -256,7 +256,7 @@ const statusPieOption = computed(() => {
 </template>
 
 <style scoped>
-.dashboard { max-width: 1480px; }
+.dashboard { max-width: 100%; }
 
 /* ── KPI 区布局 ── */
 .kpi-row {
@@ -400,5 +400,20 @@ const statusPieOption = computed(() => {
   .hero-card { width: 100%; }
   .secondary-grid { grid-template-columns: repeat(2, 1fr); }
   .chart-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+  .secondary-grid { grid-template-columns: 1fr; }
+  .city-table-card { overflow-x: auto; }
+  .city-table-card .el-table { min-width: 600px; }
+  .hero-value { font-size: 36px; }
+}
+@media (min-width: 1920px) {
+  .kpi-row { gap: 24px; }
+  .secondary-grid { gap: 16px; }
+  .chart-row { gap: 24px; }
+  .hero-card { padding: 28px; }
+  .hero-value { font-size: 56px; }
+  .secondary-card { padding: 20px 16px 20px 22px; }
+  .sec-value { font-size: 26px; }
 }
 </style>

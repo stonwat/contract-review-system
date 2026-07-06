@@ -10,52 +10,79 @@ create_source: super-agent-skill-creator
 
 ## Overview
 
-本技能是政企工程项目合同风控系统的 **Agent 感知层**，负责将合同文件（PDF/docx/图片等）通过 OCR 提取文本，调用 LLM 结构化提取合同字段，自动判定前后项合同，并将结果推送到后端 API。同时支持验收报告的提取与推送。
+本技能是政企工程项目合同风控系统的 **数据入库层**，负责从用户提交的合同/验收文件到后端存储的完整流程。OCR 提取由 `paddleocr-doc-parsing` skill 完成，分析比对由 TeleAgent 用 LLM 完成，本 skill 覆盖从文件接收到数据推送的全链路。
 
 触发场景：
-- 用户提到"审查合同""比对合同""前后项合同""提取合同数据""合同OCR""推送合同""批量处理合同""验收报告提取"
+- 用户在聊天中上传合同/验收报告文件（PDF/docx/图片）
 - 用户指向合同材料目录（如 `A:\Inbox\contract\恒天项目材料\`）
-- 用户要求启动比对、生成风险报告等后续操作
+- 用户提到"审查合同""推送合同""批量处理合同""验收报告入库"
+
+## 完整工作流程
+
+```
+用户上传文件
+     │
+     ▼
+ 1. 规范化命名      命名规则: {合同编号}-{前项/后项}-{地市}.{ext}
+     │
+     ▼
+ 2. 去重检查        GET /contracts/check 或 /acceptance/check
+     │               已存在 → 告知用户跳过
+     ▼               不存在 → 继续
+ 3. 上传 MinIO      POST /files/upload → 拿到 object_key / file_hash
+     │
+     ▼
+ 4. OCR+LLM 提取    调用 paddleocr-doc-parsing skill
+     │
+     ▼
+ 5. 前后项判定      文件名信号 → 前项/后项
+     │
+     ▼
+ 6. 推送结构化数据  POST /contracts 或 /acceptance
+```
 
 ## Workflow Decision Tree
 
 ```
 用户请求
-├→ 单文件处理？→ 流程A: 单文件提取+推送
-├→ 批量目录处理？→ 流程B: 批量扫描+自动配对+推送
-├→ 已有提取数据？→ 流程C: 直接推送JSON
-└→ 其他操作（比对/风险/报表）→ 提示用户先完成数据推送，或直接调用后端API
+├→ 单个文件？→ 流程A: 命名→去重→上传MinIO→OCR+LLM→判定→推送
+├→ 批量目录？→ 流程B: 逐文件扫描+自动配对+流程A 或 流程C
+├→ 已有提取数据（JSON）？→ 流程C: 去重→推送（跳过OCR）
+└→ 用户要求分析？→ 阶段二: TeleAgent 用 LLM 分析后推送分析结果
 ```
 
-## 流程A: 单文件提取+推送
+## 流程A: 单文件入库（主流程）
 
-**适用场景**: 用户指向单个合同文件（PDF/docx/图片）
+**适用场景**: 用户在聊天中上传单个合同/验收文件
 
-1. **OCR 提取文本**
-   - 电子版 PDF → PyMuPDF / pdfplumber 直接提取文本层
-   - 扫描件 PDF → pdf2image 转图片 → PaddleOCR 识别
-   - docx → python-docx 提取
-   - Excel → openpyxl 提取
-   - 图片 → PaddleOCR 直接识别
-   - 关键代码: `agent/ocr_extract.py` → `extract_text()`
+1. **规范化命名**
+   - 命名规则: `{合同编号}-{前项/后项}-{地市名称}.{ext}`
+   - 示例: `XYJAEXJCI250500016-前项-伊春.pdf`
+   - 合同编号需从文件内容或文件名推断；信息不足时先用临时命名
 
-2. **LLM 结构化提取**
-   - 调用配置的 LLM（默认 qwen2.5-72b），提取合同字段
-   - 提取字段: contract_no, party_a, party_b, signing_date, total_amount, amount_uppercase, payment_terms, delivery_terms, acceptance_terms, breach_terms, warranty_terms, line_items[]
-   - JSON 解析兼容 markdown 代码块包裹
-   - 关键代码: `agent/ocr_extract.py` → `llm_extract()`
+2. **去重检查**
+   - 合同: `GET /api/v1/contracts/check?contract_no=XXX&contract_type=前项`
+   - 验收: `GET /api/v1/acceptance/check?contract_no=XXX&acceptance_type=前项`
+   - 已存在 → 告知用户"该合同已存在，跳过"，终止流程
 
-3. **前后项判定**
+3. **上传 MinIO**
+   - `POST /api/v1/files/upload` 将原始文件上传到对象存储
+   - 保存返回的 `object_key` 和 `file_hash`
+
+4. **OCR + LLM 结构化提取**
+   - 使用 `paddleocr-doc-parsing` skill 提取文档结构化数据
+   - 合同字段: contract_no, party_a, party_b, signing_date, total_amount, amount_uppercase, payment_terms, delivery_terms, acceptance_terms, breach_terms, warranty_terms, line_items[]
+   - 验收字段: acceptance_no, acceptance_date, acceptance_result, acceptance_content 等
+
+5. **前后项判定**
    - 优先级: 文件名信号 → 合同编号匹配 → 默认前项
    - 前项信号: ["前项", "上家", "前"]
    - 后项信号: ["后项", "下家", "后"]
-   - 关键代码: `agent/ocr_extract.py` → `judge_front_back()`
 
-4. **推送到后端**
-   - POST `/api/v1/contracts` (Agent API Key 认证)
-   - 自动创建 Project（若 contract_no 不存在）
-   - 同时推送 line_items 分项清单
-   - 关键代码: `agent/ocr_extract.py` → `process_file()`
+6. **推送到后端**
+   - 合同: `POST /api/v1/contracts` (X-API-Key 认证)
+   - 验收: `POST /api/v1/acceptance` (X-API-Key 认证)
+   - 后端自动创建 Project（若 contract_no 不存在）+ 维护 has_* 标记
 
 ## 流程B: 批量目录处理
 
@@ -104,32 +131,34 @@ create_source: super-agent-skill-creator
 
 **关键脚本**: `scripts/push_contract.py`, `scripts/push_acceptance.py`
 
-## 配置
+## 阶段二: Agent 分析（TeleAgent 用 LLM 完成）
 
-Agent 使用 `agent/config.yaml` 配置文件:
+**适用场景**: 项目四份材料入库后，用户要求分析/比对/审查
 
-```yaml
-server:
-  base_url: http://localhost:8000/api/v1
-  api_key: change-me-to-a-random-agent-api-key
+1. **合同对比分析**
+   - 拉取项目前后项合同: `GET /api/v1/contracts?contract_no=XXX`
+   - 用 LLM 对比前后项合同的条款（付款/交付/验收/违约/质保等）
+   - 计算毛利率: `(前项金额 - 后项金额) / 前项金额`
+   - 判定等级: <0 利润倒挂 / <0.05 低毛利 / >=0.05 正常
+   - 判定一致性: 完全一致 / 有一致性风险 / 完全不一致
+   - 推送结果: `POST /api/v1/contract-analysis` (UPSERT)
 
-ocr:
-  engine: paddleocr
-  lang: ch
+2. **验收对比分析**
+   - 拉取前后项验收报告: `GET /api/v1/acceptance?contract_no=XXX`
+   - 用 LLM 对比前后项验收报告的一致性
+   - 推送结果: `POST /api/v1/acceptance-analysis` (UPSERT)
 
-llm:
-  base_url: https://api.example.com/v1
-  api_key: your-llm-api-key
-  model: qwen2.5-72b
+3. **综合风险判定**
+   - 结合毛利率、一致性、条款风险等综合判定项目风险等级
+   - 更新项目: `PUT /api/v1/projects/{contract_no}` → `project_risk` + `llm_analyzed=true`
 
-signals:
-  front: ["前项", "上家", "前"]
-  back: ["后项", "下家", "后"]
-```
+4. **告知用户**
+   - 汇报分析结果：毛利率、一致性、风险等级
 
-**运行环境要求**:
+## 运行环境要求
 - Python 3.12 (TeleAgent 内置运行时: `C:\Users\vanze\.local\share\TeleAgent\runtimes\python\python.exe`)
-- 依赖: httpx, pyyaml, PyMuPDF, pdfplumber, pdf2image, paddleocr, python-docx, openpyxl
+- 依赖: httpx, pyyaml
+- OCR 提取依赖 `paddleocr-doc-parsing` skill
 - 后端服务运行在 `http://localhost:8000`
 - PostgreSQL 本地服务 (contract_review 数据库)
 - MinIO / Redis Docker 容器运行中
@@ -155,19 +184,36 @@ signals:
 | PUT | `/api/v1/acceptance/{id}` | JWT | 修正验收报告 |
 | POST | `/api/v1/acceptance/{id}/verify` | JWT | 人工确认 |
 
-### 比对 API
+### 文件与项目 API
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/v1/comparisons/auto` | JWT | 自动配对比对 |
-| GET | `/api/v1/comparisons` | - | 比对列表 |
-| GET | `/api/v1/comparisons/{id}` | - | 比对详情(含分项) |
+| POST | `/api/v1/files/upload` | CurrentAdmin | 文件上传 MinIO |
+| GET | `/api/v1/contracts/check` | CurrentAdmin | 合同去重检查 |
+| GET | `/api/v1/acceptance/check` | CurrentAdmin | 验收报告去重检查 |
+| GET | `/api/v1/contracts/cards` | CurrentAdmin | 项目卡片列表(前后项并排) |
+| GET | `/api/v1/projects` | CurrentAdmin | 项目列表 |
+| PUT | `/api/v1/projects/{contract_no}` | CurrentAdmin | 更新项目(风险等级/审查状态) |
 
-### 其他
+### 分析 API
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/v1/dashboard/stats` | - | 仪表盘统计 |
-| POST | `/api/v1/files/upload` | X-API-Key | 文件上传 MinIO |
-| GET | `/api/v1/reports/{id}/export` | JWT | 导出 Excel 报表 |
+| POST | `/api/v1/contract-analysis` | X-API-Key | Agent 推送合同分析结果(UPSERT) |
+| GET | `/api/v1/contract-analysis/{contract_no}` | CurrentAdmin | 查询合同分析结果 |
+| POST | `/api/v1/contract-analysis/{contract_no}/verify` | CurrentAdmin | 确认合同分析 |
+| POST | `/api/v1/acceptance-analysis` | X-API-Key | Agent 推送验收分析结果(UPSERT) |
+| GET | `/api/v1/acceptance-analysis/{contract_no}` | CurrentAdmin | 查询验收分析结果 |
+| POST | `/api/v1/acceptance-analysis/{contract_no}/verify` | CurrentAdmin | 确认验收分析 |
+
+### 报表与仪表盘
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/v1/dashboard/overview` | CurrentAdmin | 仪表盘总览 |
+| GET | `/api/v1/dashboard/city-stats` | CurrentAdmin | 按地市统计 |
+| GET | `/api/v1/reports/contract-consistency` | CurrentAdmin | 合同一致性报表 |
+| GET | `/api/v1/reports/acceptance-consistency` | CurrentAdmin | 验收一致性报表 |
+| GET | `/api/v1/reports/low-margin` | CurrentAdmin | 低毛利项目报表 |
+| GET | `/api/v1/reports/high-risk` | CurrentAdmin | 高风险项目报表 |
+| GET | `/api/v1/reports/export` | CurrentAdmin | 导出 Excel |
 
 ### ContractCreate 必填字段
 ```json
@@ -216,13 +262,11 @@ signals:
 
 ## 注意事项
 
-1. **OCR 依赖可选**: PaddleOCR 与 pdf2image 为可选依赖，未安装时自动降级（仅处理电子版文档）
-2. **LLM 配置必须**: 结构化提取依赖 LLM API，需在 config.yaml 中配置有效的 base_url 和 api_key
-3. **前后项判定**: 当前主要依赖文件名信号，后续可增加合同编号+金额规则判定
-4. **幂等性**: 同一 source_file_hash 的文件重复推送会创建新记录（暂未做去重）
-5. **大文件处理**: 超大 PDF（100+ 页）可能导致 OCR 超时，建议分批处理
-6. **项目目录数据**: `A:\Inbox\contract\恒天项目材料\` 包含 4 个子项目约 479 个文件
-7. **预提取数据**: 伊春和哈尔滨目录已有 `_解析.json`，可直接推送，无需重新 OCR/LLM
+1. **去重必须先做**: 推送前必须先调用 `/contracts/check` 或 `/acceptance/check`，避免重复入库
+2. **MinIO 上传在 OCR 之前**: 文件先存 MinIO，再 OCR 提取，保证原始文件有存档
+3. **OCR 由 paddleocr-doc-parsing skill 完成**: 本 skill 不内置 OCR/LLM 逻辑
+4. **分析由 TeleAgent 直接用 LLM 完成**: 后端不负责分析计算，只负责存储和查询
+5. **前后项判定**: 主要依赖文件名信号，后续可增加合同编号+金额规则判定
 
 ## Resources
 

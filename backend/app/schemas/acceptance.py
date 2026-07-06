@@ -25,6 +25,10 @@ class AcceptanceUpdate(BaseModel):
     acceptance_result: str | None = None
 
 
+class VerifyAcceptanceRequest(BaseModel):
+    verified_by: str | None = None
+
+
 class AcceptanceListItem(BaseModel):
     """验收报告列表项。"""
     id: UUID

@@ -1,3 +1,25 @@
+---
+AIGC:
+  ContentProducer: '001191110102MAD55U9H0F10002'
+  ContentPropagator: '001191110102MAD55U9H0F10002'
+  Label: '1'
+  ProduceID: 'd8351d8f-34f6-4a2b-82b2-3b1ce9877ff1'
+  PropagateID: 'd8351d8f-34f6-4a2b-82b2-3b1ce9877ff1'
+  ReservedCode1: '68b494dc-216c-46c9-b38f-c008bc01e3f2'
+  ReservedCode2: '68b494dc-216c-46c9-b38f-c008bc01e3f2'
+---
+
+---
+AIGC:
+  ContentProducer: '001191110102MAD55U9H0F10002'
+  ContentPropagator: '001191110102MAD55U9H0F10002'
+  Label: '1'
+  ProduceID: '9cfc729b-7d6f-48b8-917d-06fc03075807'
+  PropagateID: '9cfc729b-7d6f-48b8-917d-06fc03075807'
+  ReservedCode1: 'f3400c99-5c93-436e-a08d-b32c9c160f4a'
+  ReservedCode2: 'f3400c99-5c93-436e-a08d-b32c9c160f4a'
+---
+
 # 合同审查系统（Contract Review System）
 
 政企工程项目合同风控系统：通过 OCR + LLM 自动提取合同信息，自动完成前后项合同比对、毛利率计算、风险判定，生成统计报表。
@@ -11,7 +33,7 @@
 | 文件存储 | MinIO（S3 兼容）|
 | 任务队列 | Redis + arq |
 | 前端 | Vue 3 + TypeScript + Element Plus + Pinia + Vue Router + Vite |
-| OCR | PaddleOCR（本地 Agent）|
+| OCR | PaddleOCR（paddleocr-doc-parsing skill）|
 | 容器化 | Docker Compose |
 
 ## 目录结构
@@ -20,7 +42,8 @@
 contract-review-system/
 ├── backend/            # 后端 FastAPI
 ├── frontend/           # 前端 Vue 3
-├── agent/              # 本地 Agent 脚本
+├── skill/              # TeleAgent Skill
+│   └── contract-review-agent/  # 合同审查智能体
 ├── specing-docs/       # 项目文档
 ├── docker-compose.yml  # 全服务编排
 ├── .env.example        # 环境变量模板
@@ -32,6 +55,7 @@ contract-review-system/
 | 软件 | 版本 |
 |:---|:---|
 | Python | 3.11+ |
+| uv | 0.5+（推荐，可选 pip） |
 | Node.js | 18+ |
 | PostgreSQL | 16 |
 | Redis | 7+ |
@@ -55,14 +79,25 @@ docker compose up -d postgres minio redis
 
 ### 3. 启动后端
 
+#### 方式一：uv（推荐）
+
+```bash
+cd backend
+uv sync                              # 自动创建 .venv + 同步依赖
+uv run alembic upgrade head          # 执行数据库迁移
+uv run uvicorn app.main:app --reload     # 启动服务，访问 http://localhost:8000/docs
+```
+
+#### 方式二：pip
+
 ```bash
 cd backend
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # Linux/Mac
+.venv\Scripts\activate               # Windows
+# source .venv/bin/activate          # Linux/Mac
 pip install -r requirements.txt
-alembic upgrade head            # 执行数据库迁移
-python -m app.main              # 启动服务，访问 http://localhost:8000/docs
+alembic upgrade head                 # 执行数据库迁移
+python -m app.main                   # 启动服务，访问 http://localhost:8000/docs
 ```
 
 ### 4. 启动前端
@@ -72,6 +107,25 @@ cd frontend
 pnpm install                    # 或 npm install
 pnpm dev                        # 访问 http://localhost:5173
 ```
+
+## 生产部署
+
+### Docker Compose（推荐）
+
+```bash
+docker compose up -d               # 启动全部服务
+```
+
+### 手动部署（后端）
+
+`uv run uvicorn app.main:app` 仅用于开发（加 `--reload` 热重载）。
+
+```bash
+cd backend
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+建议配合 systemd / supervisor 管理进程，或用 Docker 容器化部署。
 
 ## 常用命令
 
@@ -108,3 +162,7 @@ pnpm dev                        # 访问 http://localhost:5173
 cd backend
 python -m app.scripts.create_admin --username admin --password <your_password>
 ```
+
+> AI生成
+
+> AI生成

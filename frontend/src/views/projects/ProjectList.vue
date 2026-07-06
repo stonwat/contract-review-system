@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onMounted, reactive } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElCard, ElRow, ElCol, ElInput, ElSelect, ElOption, ElButton, ElTag, ElEmpty, ElDivider, ElTooltip } from 'element-plus'
+import { ElCard, ElRow, ElCol, ElInput, ElSelect, ElOption, ElButton, ElTag, ElEmpty, ElDivider, ElTooltip, ElRadioGroup, ElRadioButton } from 'element-plus'
 import { useContractStore } from '@/stores/contracts'
 import { formatAmount } from '@/utils/format'
 import SvgIcon from '@/components/SvgIcon.vue'
+import { fetchCities } from '@/api/cities'
 
 const store = useContractStore()
 const router = useRouter()
@@ -13,6 +14,12 @@ const filters = reactive({
   keyword: '',
   city: '' as string,
 })
+const cities = ref<string[]>([])
+const columns = ref(2)
+
+const gridStyle = computed(() => ({
+  gridTemplateColumns: `repeat(${columns.value}, 1fr)`,
+}))
 
 async function loadData(): Promise<void> {
   await store.fetchCards({
@@ -41,7 +48,10 @@ function riskClass(risk?: string): string {
   return 'risk-none'
 }
 
-onMounted(loadData)
+onMounted(async () => {
+  cities.value = await fetchCities()
+  loadData()
+})
 </script>
 
 <template>
@@ -64,20 +74,23 @@ onMounted(loadData)
       >
         <template #prefix><SvgIcon name="search" :size="16" color="info" /></template>
       </ElInput>
-      <ElSelect v-model="filters.city" placeholder="地市筛选" style="width: 140px" clearable>
-        <ElOption label="鹤岗" value="鹤岗" />
-        <ElOption label="伊春" value="伊春" />
-        <ElOption label="齐齐哈尔" value="齐齐哈尔" />
-        <ElOption label="哈尔滨" value="哈尔滨" />
+      <ElSelect v-model="filters.city" placeholder="地市筛选" style="width: 140px" clearable @change="loadData">
+        <ElOption v-for="c in cities" :key="c" :label="c" :value="c" />
       </ElSelect>
       <ElButton type="primary" @click="handleSearch">查询</ElButton>
+      <span class="column-toggle hide-mobile">
+        <span class="toggle-label">排列</span>
+        <div class="grid-cells">
+          <div v-for="n in 4" :key="n" class="grid-cell" :class="{ filled: n <= columns }" @click="columns = n"></div>
+        </div>
+      </span>
     </div>
 
     <!-- 空状态 -->
     <ElEmpty v-if="!store.loading && (!store.cards || store.cards.length === 0)" description="暂无项目数据" />
 
     <!-- 卡片网格 -->
-    <div v-loading="store.loading" class="card-grid">
+    <div v-loading="store.loading" class="card-grid" :style="gridStyle">
       <ElCard
         v-for="(card, idx) in store.cards"
         :key="card.contract_no"
@@ -189,7 +202,7 @@ onMounted(loadData)
 
 <style scoped>
 .project-card-list {
-  max-width: 1400px;
+  max-width: 100%;
 }
 
 /* 页面头部 */
@@ -208,7 +221,6 @@ onMounted(loadData)
 /* 卡片网格 */
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(520px, 1fr));
   gap: 16px;
 }
 
@@ -377,5 +389,65 @@ onMounted(loadData)
 .mat-dot.active {
   background: var(--color-primary-soft);
   color: var(--color-primary);
+}
+
+/* ── 响应式 ── */
+@media (max-width: 1280px) {
+  .card-grid { grid-template-columns: 1fr 1fr !important; }
+}
+@media (max-width: 900px) {
+  .card-grid { grid-template-columns: 1fr !important; }
+  .project-name { max-width: 200px; }
+}
+@media (max-width: 768px) {
+  .project-name { max-width: 140px; }
+  .card-footer { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .contract-side { padding: 0; }
+}
+@media (min-width: 1920px) {
+  .card-grid { gap: 20px; }
+  .project-card { font-size: 14px; }
+  .project-name { font-size: 16px; max-width: 360px; }
+}
+
+/* 列数切换（网格样式） */
+.column-toggle {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.toggle-label {
+  font-size: 13px;
+  color: var(--color-ink-3);
+  user-select: none;
+}
+.grid-cells {
+  display: flex;
+  gap: 4px;
+  cursor: pointer;
+}
+.grid-cell {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--color-ink-4);
+  border-radius: 3px;
+  transition: all 0.2s ease;
+  position: relative;
+}
+.grid-cell.filled {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+.grid-cell:hover {
+  border-color: var(--color-primary);
+}
+.grid-cell:hover::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 5px;
+  border: 1.5px solid var(--color-primary);
+  opacity: 0.3;
 }
 </style>

@@ -153,7 +153,7 @@ async function handleVerifyAcceptance(type: 'front' | 'back'): Promise<void> {
   const key = `${type}-acceptance`
   verifying[key] = true
   try {
-    await verifyAcceptance(target.id)
+    await verifyAcceptance(target.id, authStore.adminInfo?.username || 'admin')
     ElMessage.success(`${type === 'front' ? '前项' : '后项'}验收报告已确认`)
     await loadData()
   } catch (e) {

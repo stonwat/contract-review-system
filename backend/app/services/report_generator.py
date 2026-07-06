@@ -15,17 +15,26 @@ from app.models.project import Project
 class ReportGenerator:
     """报表生成器。所有报表实时查询，不入库缓存。"""
 
-    async def _load_contracts(self, db: AsyncSession, contract_no: str) -> dict:
-        """加载项目前后项合同金额。"""
+    async def _load_contracts_batch(self, db: AsyncSession, contract_nos: list[str]) -> dict[str, dict]:
+        """批量加载多个项目的前后项合同金额，返回 {contract_no: {front_amount, back_amount}}。"""
+        if not contract_nos:
+            return {}
         rows = (await db.execute(
-            select(Contract).where(Contract.contract_no == contract_no)
+            select(Contract).where(Contract.contract_no.in_(contract_nos))
         )).scalars().all()
-        front = next((c for c in rows if c.contract_type == "前项"), None)
-        back = next((c for c in rows if c.contract_type == "后项"), None)
-        return {
-            "front_amount": float(front.total_amount) if front and front.total_amount else None,
-            "back_amount": float(back.total_amount) if back and back.total_amount else None,
-        }
+
+        result: dict[str, dict] = {}
+        for contract_no in contract_nos:
+            result[contract_no] = {"front_amount": None, "back_amount": None}
+
+        for c in rows:
+            amount = float(c.total_amount) if c.total_amount is not None else None
+            if c.contract_type == "前项":
+                result[c.contract_no]["front_amount"] = amount
+            elif c.contract_type == "后项":
+                result[c.contract_no]["back_amount"] = amount
+
+        return result
 
     async def contract_consistency_report(
         self, db: AsyncSession, city: str | None = None
@@ -39,15 +48,19 @@ class ReportGenerator:
             stmt = stmt.where(Project.city == city)
         rows = (await db.execute(stmt)).all()
 
+        # 批量加载合同金额
+        contract_nos = [ca.contract_no for ca, _, _ in rows]
+        amounts_map = await self._load_contracts_batch(db, contract_nos)
+
         details = []
         for ca, c, pn in rows:
-            amounts = await self._load_contracts(db, ca.contract_no)
+            amounts = amounts_map.get(ca.contract_no, {})
             details.append({
                 "contract_no": ca.contract_no,
                 "project_name": pn,
                 "city": c,
-                "front_amount": amounts["front_amount"],
-                "back_amount": amounts["back_amount"],
+                "front_amount": amounts.get("front_amount"),
+                "back_amount": amounts.get("back_amount"),
                 "rate": float(ca.rate) if ca.rate is not None else None,
                 "rate_level": ca.rate_level,
                 "similarity": ca.similarity,
@@ -110,15 +123,18 @@ class ReportGenerator:
             stmt = stmt.where(Project.city == city)
         rows = (await db.execute(stmt)).all()
 
+        contract_nos = [ca.contract_no for ca, _, _ in rows]
+        amounts_map = await self._load_contracts_batch(db, contract_nos)
+
         details = []
         for ca, c, pn in rows:
-            amounts = await self._load_contracts(db, ca.contract_no)
+            amounts = amounts_map.get(ca.contract_no, {})
             details.append({
                 "contract_no": ca.contract_no,
                 "project_name": pn,
                 "city": c,
-                "front_amount": amounts["front_amount"],
-                "back_amount": amounts["back_amount"],
+                "front_amount": amounts.get("front_amount"),
+                "back_amount": amounts.get("back_amount"),
                 "rate": float(ca.rate) if ca.rate is not None else None,
                 "rate_level": ca.rate_level,
             })
@@ -153,20 +169,32 @@ class ReportGenerator:
         )
         if city:
             stmt = stmt.where(Project.city == city)
-        projects = (await db.execute(stmt)).scalars().all()
+        projects_list = (await db.execute(stmt)).scalars().all()
+
+        contract_nos = [p.contract_no for p in projects_list]
+        amounts_map = await self._load_contracts_batch(db, contract_nos)
+
+        # 批量加载分析结果
+        ca_map: dict[str, ContractAnalysis] = {}
+        ara_map: dict[str, AcceptanceReportAnalysis] = {}
+        if contract_nos:
+            ca_rows = (await db.execute(
+                select(ContractAnalysis).where(ContractAnalysis.contract_no.in_(contract_nos))
+            )).scalars().all()
+            for ca in ca_rows:
+                ca_map[ca.contract_no] = ca
+
+            ara_rows = (await db.execute(
+                select(AcceptanceReportAnalysis).where(AcceptanceReportAnalysis.contract_no.in_(contract_nos))
+            )).scalars().all()
+            for ara in ara_rows:
+                ara_map[ara.contract_no] = ara
 
         details = []
-        for p in projects:
-            # 关联分析结果
-            ca = (await db.execute(
-                select(ContractAnalysis).where(ContractAnalysis.contract_no == p.contract_no)
-            )).scalars().first()
-            ara = (await db.execute(
-                select(AcceptanceReportAnalysis).where(
-                    AcceptanceReportAnalysis.contract_no == p.contract_no
-                )
-            )).scalars().first()
-            amounts = await self._load_contracts(db, p.contract_no)
+        for p in projects_list:
+            ca = ca_map.get(p.contract_no)
+            ara = ara_map.get(p.contract_no)
+            amounts = amounts_map.get(p.contract_no, {})
             details.append({
                 "contract_no": p.contract_no,
                 "project_name": p.project_name,

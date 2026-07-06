@@ -22,7 +22,6 @@ import sys
 from pathlib import Path
 
 import httpx
-import yaml
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -30,18 +29,6 @@ logger = logging.getLogger(__name__)
 SUPPORTED_EXTS = {".pdf", ".docx", ".doc", ".xls", ".xlsx", ".jpg", ".png"}
 CONTRACT_JSON_PATTERNS = ["*合同*解析*.json", "*合同*_解析.json"]
 ACCEPTANCE_JSON_PATTERNS = ["*验收*解析*.json", "*验收*_解析.json"]
-
-
-def load_config(config_path: str = "agent/config.yaml") -> dict:
-    """加载配置文件。"""
-    path = Path(config_path)
-    if not path.exists():
-        path = Path("A:/Inbox/contract-review-system/agent/config.yaml")
-    if not path.exists():
-        logger.error("配置文件不存在: %s", config_path)
-        sys.exit(1)
-    with path.open(encoding="utf-8") as f:
-        return yaml.safe_load(f)
 
 
 def extract_project_no(dir_path: Path) -> str | None:
@@ -119,7 +106,7 @@ def _map_li(item: dict) -> dict:
     return {LI_MAP.get(k, k): v for k, v in item.items()}
 
 
-def push_json(json_path: Path, config: dict, is_contract: bool = True, project_no: str | None = None) -> dict:
+def push_json(json_path: Path, is_contract: bool = True, project_no: str | None = None) -> dict:
     """推送 JSON 数据到后端。"""
     with json_path.open(encoding="utf-8") as f:
         data = json.load(f)
@@ -146,58 +133,25 @@ def push_json(json_path: Path, config: dict, is_contract: bool = True, project_n
     mapped.setdefault("ocr_engine", "pre-extracted")
     mapped.setdefault("llm_model", "unknown")
 
-    base_url = config["server"]["base_url"]
-    api_key = config["server"]["api_key"]
-    with httpx.Client(base_url=base_url, headers={"X-API-Key": api_key}, timeout=60.0) as client:
+    with httpx.Client(base_url="http://localhost:8000/api/v1", timeout=60.0) as client:
         resp = client.post(endpoint, json=mapped)
         resp.raise_for_status()
         return resp.json()
 
 
-async def process_with_ocr_llm(file_path: Path, config: dict, project_no: str | None = None) -> dict:
-    """使用 OCR + LLM 流程处理文件并推送。"""
-    # 动态导入 agent 模块
-    sys.path.insert(0, "A:/Inbox/contract-review-system")
-    from agent.config_client import AgentConfig
-    from agent.ocr_extract import extract_text, file_hash as _fh, judge_front_back, llm_extract
+async def process_with_ocr_llm(file_path: Path, project_no: str | None = None) -> dict:
+    """OCR + LLM 流程已迁移至 paddleocr-doc-parsing skill，此函数保留接口但不再执行。
 
-    agent_config = AgentConfig()
-
-    # 1. OCR 提取文本
-    text = extract_text(file_path)
-    if not text:
-        raise ValueError(f"OCR 提取文本为空: {file_path}")
-
-    # 2. LLM 结构化提取
-    extracted = await llm_extract(text, agent_config)
-
-    # 3. 构建推送数据
-    contract_no = extracted.get("contract_no", project_no or file_path.stem)
-    contract_type = judge_front_back(file_path.name, agent_config, str(contract_no))
-
-    payload = {
-        "contract_no": str(contract_no),
-        "contract_type": contract_type,
-        "type_judge_basis": f"文件名:{file_path.name}",
-        "source_file_name": file_path.name,
-        "source_file_hash": _fh(file_path),
-        "ocr_raw_text": text,
-        "ocr_engine": "paddleocr",
-        "llm_model": agent_config.llm_model,
-        **{k: v for k, v in extracted.items() if k != "raw"},
-    }
-
-    # 4. 推送
-    base_url = config["server"]["base_url"]
-    api_key = config["server"]["api_key"]
-    with httpx.Client(base_url=base_url, headers={"X-API-Key": api_key}, timeout=60.0) as client:
-        resp = client.post("/contracts", json=payload)
-        resp.raise_for_status()
-        return resp.json()
+    如需 OCR 提取，请使用 paddleocr-doc-parsing skill 处理文件后再通过 push_contract / push_acceptance 推送。
+    """
+    raise NotImplementedError(
+        "OCR+LLM 提取已迁移至 paddleocr-doc-parsing skill，"
+        "请先使用该 skill 提取结构化数据，再通过 push_contract.py / push_acceptance.py 推送。"
+    )
 
 
-def process_directory(dir_path: Path, config: dict) -> list[dict]:
-    """智能处理目录: 优先使用预提取 JSON，否则走 OCR+LLM。"""
+def process_directory(dir_path: Path) -> list[dict]:
+    """智能处理目录: 优先使用预提取 JSON，否则跳过（需先通过 OCR skill 提取）。"""
     results = []
 
     # 查找子项目目录
@@ -216,7 +170,7 @@ def process_directory(dir_path: Path, config: dict) -> list[dict]:
             logger.info("  发现预提取数据，走流程C (直接推送)")
             for jf in pre["contracts"]:
                 try:
-                    result = push_json(jf, config, is_contract=True, project_no=project_no)
+                    result = push_json(jf, is_contract=True, project_no=project_no)
                     logger.info("  合同推送成功: %s", jf.name)
                     results.append({"file": str(jf), "status": "ok", "type": "contract"})
                 except Exception as e:
@@ -225,27 +179,14 @@ def process_directory(dir_path: Path, config: dict) -> list[dict]:
 
             for jf in pre["acceptance"]:
                 try:
-                    result = push_json(jf, config, is_contract=False, project_no=project_no)
+                    result = push_json(jf, is_contract=False, project_no=project_no)
                     logger.info("  验收报告推送成功: %s", jf.name)
                     results.append({"file": str(jf), "status": "ok", "type": "acceptance"})
                 except Exception as e:
                     logger.error("  验收报告推送失败: %s - %s", jf.name, e)
                     results.append({"file": str(jf), "status": "error", "type": "acceptance", "error": str(e)})
         else:
-            logger.info("  无预提取数据，走流程A/B (OCR+LLM)")
-            # 查找合同/验收的原文件
-            contract_files = [
-                p for p in subdir.rglob("*")
-                if p.suffix.lower() in SUPPORTED_EXTS and p.name.startswith(("前项", "后项", "验收", "合同"))
-            ]
-            for cf in contract_files:
-                try:
-                    result = asyncio.run(process_with_ocr_llm(cf, config, project_no))
-                    logger.info("  OCR+LLM 推送成功: %s", cf.name)
-                    results.append({"file": str(cf), "status": "ok", "type": "ocr_llm"})
-                except Exception as e:
-                    logger.error("  OCR+LLM 推送失败: %s - %s", cf.name, e)
-                    results.append({"file": str(cf), "status": "error", "type": "ocr_llm", "error": str(e)})
+            logger.warning("  无预提取数据，请先使用 paddleocr-doc-parsing skill 提取")
 
     return results
 
@@ -254,18 +195,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="自动提取并推送合同数据")
     parser.add_argument("--dir", help="项目材料根目录")
     parser.add_argument("--file", help="单个合同文件路径")
-    parser.add_argument("--config", default="agent/config.yaml", help="配置文件路径")
     args = parser.parse_args()
-
-    config = load_config(args.config)
 
     if args.file:
         fp = Path(args.file)
         project_no = extract_project_no(fp.parent)
-        result = asyncio.run(process_with_ocr_llm(fp, config, project_no))
+        result = asyncio.run(process_with_ocr_llm(fp, project_no))
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif args.dir:
-        results = process_directory(Path(args.dir), config)
+        results = process_directory(Path(args.dir))
         ok = sum(1 for r in results if r["status"] == "ok")
         err = sum(1 for r in results if r["status"] == "error")
         print(f"\n处理完成: 成功 {ok}, 失败 {err}")

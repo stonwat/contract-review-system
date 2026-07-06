@@ -27,10 +27,18 @@ async def overview(
             return project_q.where(Project.city == admin.city)
         return project_q
 
+    def _contract_filter(stmt):
+        """city_admin 只统计自己地市的合同（通过 project.city 关联）。"""
+        if admin and admin.is_city_admin:
+            return stmt.join(Project, Contract.contract_no == Project.contract_no).where(Project.city == admin.city)
+        return stmt
+
     project_count = (await db.execute(
         _filter(select(func.count(Project.contract_no)))
     )).scalar_one()
-    contract_count = (await db.execute(select(func.count(Contract.id)))).scalar_one()
+    contract_count = (await db.execute(
+        _contract_filter(select(func.count(Contract.id)))
+    )).scalar_one()
     pending = (
         await db.execute(select(func.count(Contract.id)).where(Contract.verified == False))  # noqa: E712
     ).scalar_one()
@@ -53,14 +61,18 @@ async def overview(
     # 前后项数量
     front_count = (
         await db.execute(
-            select(func.count(func.distinct(Contract.contract_no)))
-            .where(Contract.contract_type == "前项")
+            _contract_filter(
+                select(func.count(func.distinct(Contract.contract_no)))
+                .where(Contract.contract_type == "前项")
+            )
         )
     ).scalar_one()
     back_count = (
         await db.execute(
-            select(func.count(func.distinct(Contract.contract_no)))
-            .where(Contract.contract_type == "后项")
+            _contract_filter(
+                select(func.count(func.distinct(Contract.contract_no)))
+                .where(Contract.contract_type == "后项")
+            )
         )
     ).scalar_one()
     # 四材料齐全的项目数（具备分析条件）
@@ -161,7 +173,6 @@ async def city_stats(
     )
     if admin and admin.is_city_admin:
         high_risk_q = high_risk_q.where(Project.city == admin.city)
-    high_risk_result = await db.execute(high_risk_q)
     high_risk_result = await db.execute(high_risk_q)
     for row in high_risk_result.all():
         if row[0] in base_stats:

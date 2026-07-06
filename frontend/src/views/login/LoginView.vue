@@ -387,7 +387,7 @@ onMounted(() => {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
   box-shadow: none;
-  padding: 4px 16px;
+  padding: 4px 16px 4px 38px;
   height: 46px;
   transition: all 0.3s ease;
 }

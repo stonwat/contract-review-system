@@ -1,5 +1,4 @@
 import { get, post } from './request'
-import type { ApiResponse } from '@/types/api'
 
 export type Role = 'super_admin' | 'city_admin' | 'viewer'
 
@@ -53,6 +52,6 @@ export function getCity(): string | null {
   return localStorage.getItem('city')
 }
 
-export async function checkHealth(): Promise<ApiResponse<{ status: string }>> {
-  return get('/health') as unknown as Promise<ApiResponse<{ status: string }>>
+export async function checkHealth(): Promise<{ status: string }> {
+  return get<{ status: string }>('/health')
 }

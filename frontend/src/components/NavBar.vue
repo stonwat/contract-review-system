@@ -39,7 +39,7 @@ const roleTag = computed(() => {
     <!-- 右侧：用户信息 -->
     <div class="navbar-right">
       <!-- AI 状态指示 -->
-      <div class="ai-status">
+      <div class="ai-status hide-mobile">
         <span class="ai-dot"></span>
         <span class="ai-label">AI 就绪</span>
       </div>
